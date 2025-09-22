@@ -4,6 +4,8 @@
  */
 use crate::constants::DEFAULT_TICK;
 use crossterm::{event, event::Event as CEvent, event::KeyCode as Key, event::KeyEvent};
+#[cfg(windows)]
+use crossterm::event::KeyEventKind;
 #[cfg(unix)]
 use signal_hook::consts::signal::{SIGABRT, SIGINT, SIGTERM};
 #[cfg(unix)]
@@ -65,8 +67,13 @@ impl Events {
             thread::spawn(move || loop {
                 match event::read().expect("Couldn't read event") {
                     CEvent::Key(key) => {
-                        if tx.send(Event::Input(key)).is_err() {
-                            break;
+                        match key.kind {
+                            KeyEventKind::Press | KeyEventKind::Repeat => {
+                                if tx.send(Event::Input(key)).is_err() {
+                                    break;
+                                }
+                            }
+                            KeyEventKind::Release => {}
                         }
                     }
                     CEvent::Resize(cols, rows) => {
