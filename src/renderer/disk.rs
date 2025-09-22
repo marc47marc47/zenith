@@ -147,6 +147,8 @@ fn disk_activity_histogram(
             "R [{:^10}/s] PEAK [{:^10}/s] {:} ",
             read_up, read_max_bytes, top_reader
         ))];
+        #[cfg(all(not(target_os = "linux"), not(target_os = "macos")))]
+        let spans = vec![Span::raw(format!("R [{:^10}/s] PEAK [{:^10}/s] {:} ", read_up, read_max_bytes, top_reader))];
 
         #[cfg(target_os = "linux")]
         {

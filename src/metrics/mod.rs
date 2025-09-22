@@ -34,7 +34,10 @@ use std::path::{Path, PathBuf};
 use sysinfo::{
     Component, ComponentExt, Disk, DiskExt, NetworkExt, ProcessExt, ProcessorExt, System, SystemExt,
 };
-use uzers::{Users, UsersCache};
+#[cfg(unix)]
+use uzers::UsersCache;
+#[cfg(not(unix))]
+type UsersCache = ();
 
 #[cfg(all(feature = "nvidia", not(target_os = "linux")))]
 #[derive(FromPrimitive, PartialEq, Copy, Clone)]
@@ -237,6 +240,7 @@ pub struct CPUTimeApp {
     pub net_out: u64,
     pub processes: Vec<i32>,
     pub process_map: HashMap<i32, ZProcess>,
+    #[cfg(unix)]
     pub user_cache: UsersCache,
     pub cum_cpu_process: Option<ZProcess>,
     pub top_pids: Top,
@@ -324,6 +328,7 @@ impl CPUTimeApp {
             net_out: 0,
             processes: Vec::with_capacity(400),
             process_map: HashMap::with_capacity(400),
+            #[cfg(unix)]
             user_cache: UsersCache::new(),
             cum_cpu_process: None,
             frequency: 0,
@@ -492,7 +497,8 @@ impl CPUTimeApp {
         self.threads_total = 0;
 
         for (pid, process) in process_list {
-            if let Some(zp) = self.process_map.get_mut(pid) {
+            let pid_i32 = (*pid) as i32;
+            if let Some(zp) = self.process_map.get_mut(&pid_i32) {
                 if zp.start_time == process.start_time() {
                     let disk_usage = process.disk_usage();
                     // check for PID reuse
@@ -500,10 +506,13 @@ impl CPUTimeApp {
                     zp.cpu_usage = process.cpu_usage();
                     zp.cum_cpu_usage += zp.cpu_usage as f64;
                     zp.status = process.status();
-                    zp.priority = process.priority;
-                    zp.nice = process.nice;
+                    #[cfg(unix)]
+                    {
+                        zp.priority = process.priority;
+                        zp.nice = process.nice;
+                        zp.threads_total = process.threads_total;
+                    }
                     zp.virtual_memory = process.virtual_memory();
-                    zp.threads_total = process.threads_total;
                     self.threads_total += zp.threads_total as usize;
                     zp.prev_read_bytes = zp.read_bytes;
                     zp.prev_write_bytes = zp.write_bytes;
@@ -515,11 +524,14 @@ impl CPUTimeApp {
 
                     top.update(zp, &self.histogram_map.tick);
                 } else {
+                    #[cfg(unix)]
                     let user_name = self
                         .user_cache
                         .get_user_by_uid(process.uid)
                         .map(|user| user.name().to_string_lossy().to_string())
                         .unwrap_or(format!("{:}", process.uid));
+                    #[cfg(not(unix))]
+                    let user_name = process.name().to_string();
                     let zprocess = ZProcess::from_user_and_process(user_name, process);
                     self.threads_total += zprocess.threads_total as usize;
 
@@ -528,11 +540,14 @@ impl CPUTimeApp {
                     self.process_map.insert(zprocess.pid, zprocess);
                 }
             } else {
+                #[cfg(unix)]
                 let user_name = self
                     .user_cache
                     .get_user_by_uid(process.uid)
                     .map(|user| user.name().to_string_lossy().to_string())
                     .unwrap_or(format!("{:}", process.uid));
+                #[cfg(not(unix))]
+                let user_name = process.name().to_string();
                 #[allow(unused_mut)]
                 let mut zprocess = ZProcess::from_user_and_process(user_name, process);
                 #[cfg(target_os = "linux")]
@@ -544,7 +559,7 @@ impl CPUTimeApp {
 
                 self.process_map.insert(zprocess.pid, zprocess);
             }
-            current_pids.insert(*pid);
+            current_pids.insert(pid_i32);
         }
 
         if keep_order {

@@ -2,10 +2,10 @@
  * Copyright 2019-2020, Benjamin Vaisvil and the zenith contributors
  */
 use crate::metrics::ProcessTableSortBy;
-use heim::process;
-use heim::process::ProcessError;
+use heim::process::{self, Pid as HeimPid, ProcessError};
 #[cfg(target_os = "linux")]
 use libc::getpriority;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use libc::{id_t, setpriority};
 
 #[cfg(target_os = "linux")]
@@ -77,12 +77,25 @@ pub struct ZProcess {
 }
 
 impl ZProcess {
+    fn heim_pid(&self) -> HeimPid {
+        self.pid.max(0) as HeimPid
+    }
+
     pub fn from_user_and_process(user_name: String, process: &Process) -> Self {
         let disk_usage = process.disk_usage();
+        let pid = process.pid() as i32;
+        #[cfg(unix)]
+        let uid = process.uid as u32;
+        #[cfg(not(unix))]
+        let uid = 0;
+        #[cfg(unix)]
+        let (priority, nice, threads_total) = (process.priority, process.nice, process.threads_total);
+        #[cfg(not(unix))]
+        let (priority, nice, threads_total) = (0, 0, 0u64);
         ZProcess {
-            uid: process.uid,
+            uid,
             user_name,
-            pid: process.pid(),
+            pid,
             memory: process.memory(),
             cpu_usage: process.cpu_usage(),
             command: process.cmd().to_vec(),
@@ -90,10 +103,10 @@ impl ZProcess {
             exe: format!("{}", process.exe().display()),
             name: process.name().to_string(),
             cum_cpu_usage: process.cpu_usage() as f64,
-            priority: process.priority,
-            nice: process.nice,
+            priority,
+            nice,
             virtual_memory: process.virtual_memory(),
-            threads_total: process.threads_total,
+            threads_total,
             read_bytes: disk_usage.total_read_bytes,
             write_bytes: disk_usage.total_written_bytes,
             prev_read_bytes: disk_usage.total_read_bytes,
@@ -128,28 +141,28 @@ impl ZProcess {
     }
 
     pub async fn suspend(&self) -> String {
-        match process::get(self.pid).await {
+        match process::get(self.heim_pid()).await {
             Ok(p) => convert_result_to_string!(p.suspend().await),
             Err(e) => convert_error_to_string!(e),
         }
     }
 
     pub async fn resume(&self) -> String {
-        match process::get(self.pid).await {
+        match process::get(self.heim_pid()).await {
             Ok(p) => convert_result_to_string!(p.resume().await),
             Err(e) => convert_error_to_string!(e),
         }
     }
 
     pub async fn kill(&self) -> String {
-        match process::get(self.pid).await {
+        match process::get(self.heim_pid()).await {
             Ok(p) => convert_result_to_string!(p.kill().await),
             Err(e) => convert_error_to_string!(e),
         }
     }
 
     pub async fn terminate(&self) -> String {
-        match process::get(self.pid).await {
+        match process::get(self.heim_pid()).await {
             Ok(p) => convert_result_to_string!(p.terminate().await),
             Err(e) => convert_error_to_string!(e),
         }
@@ -246,6 +259,11 @@ impl ZProcess {
         } else {
             String::from("Priority Set.")
         }
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    pub fn set_priority(&mut self, _priority: i32) -> String {
+        String::from("Setting priority is not supported on this platform.")
     }
 
     pub fn set_end_time(&mut self) {
@@ -439,6 +457,13 @@ impl ProcessStatusExt for ProcessStatus {
             ProcessStatus::Waking => "W",
             ProcessStatus::Parked => "P",
             ProcessStatus::Unknown(_) => "U",
+        }
+    }
+    #[cfg(not(unix))]
+    fn to_single_char(&self) -> &str {
+        match *self {
+            ProcessStatus::Run => "R",
+            _ => "U",
         }
     }
 }

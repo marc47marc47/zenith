@@ -4,8 +4,12 @@
  */
 use crate::constants::DEFAULT_TICK;
 use crossterm::{event, event::Event as CEvent, event::KeyCode as Key, event::KeyEvent};
+#[cfg(unix)]
 use signal_hook::consts::signal::{SIGABRT, SIGINT, SIGTERM};
+#[cfg(unix)]
 use signal_hook::iterator::Signals;
+#[cfg(windows)]
+use std::convert::TryFrom;
 use std::fs::{remove_file, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -26,6 +30,7 @@ pub struct Events {
     rx: mpsc::Receiver<Event<KeyEvent>>,
     input_handle: thread::JoinHandle<()>,
     tick_handle: thread::JoinHandle<()>,
+    #[cfg(unix)]
     sig_handle: thread::JoinHandle<()>,
 }
 
@@ -54,6 +59,26 @@ impl Events {
 
     pub fn with_config(config: Config) -> Events {
         let (tx, rx) = mpsc::channel();
+        #[cfg(windows)]
+        let input_handle = {
+            let tx = tx.clone();
+            thread::spawn(move || loop {
+                match event::read().expect("Couldn't read event") {
+                    CEvent::Key(key) => {
+                        if tx.send(Event::Input(key)).is_err() {
+                            break;
+                        }
+                    }
+                    CEvent::Resize(cols, rows) => {
+                        if tx.send(Event::Resize(cols, rows)).is_err() {
+                            break;
+                        }
+                    }
+                    _ => (), // ignore
+                }
+            })
+        };
+        #[cfg(not(windows))]
         let input_handle = {
             let tx = tx.clone();
             thread::spawn(move || loop {
@@ -66,6 +91,24 @@ impl Events {
                 }
             })
         };
+        #[cfg(windows)]
+        let tick_handle = {
+            let tx = tx.clone();
+            thread::spawn(move || {
+                let mut count: u64 = 0;
+                loop {
+                    if tx.send(Event::Tick).is_err() {
+                        break;
+                    }
+                    count += 1;
+                    if count % 60 == 0 && tx.send(Event::Save).is_err() {
+                        break;
+                    }
+                    thread::sleep(config.tick_rate);
+                }
+            })
+        };
+        #[cfg(not(windows))]
         let tick_handle = {
             let tx = tx.clone();
             thread::spawn(move || {
@@ -81,6 +124,7 @@ impl Events {
                 }
             })
         };
+        #[cfg(unix)]
         let sig_handle = {
             let tx = tx;
             let mut signals =
@@ -97,6 +141,7 @@ impl Events {
             rx,
             input_handle,
             tick_handle,
+            #[cfg(unix)]
             sig_handle,
         }
     }
@@ -153,6 +198,16 @@ async fn is_zenith_running(path: &Path) -> bool {
         .map_or(false, |name| name == "zenith")
 }
 
+#[cfg(windows)]
+async fn name_of_process_for_pidfile(path: &Path) -> Option<String> {
+    let data = std::fs::read_to_string(path).ok()?;
+    let pid: i32 = data.parse().ok()?;
+    let pid = u32::try_from(pid).ok()?;
+    let process = heim::process::get(pid).await.ok()?;
+    process.name().await.ok()
+}
+
+#[cfg(not(windows))]
 async fn name_of_process_for_pidfile(path: &Path) -> Option<String> {
     let data = std::fs::read_to_string(path).ok()?;
     let pid: i32 = data.parse().ok()?;
