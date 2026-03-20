@@ -1,6 +1,7 @@
-/**
- * Copyright 2019-2020, Benjamin Vaisvil and the zenith contributors
+/*!
+ * Copyright 2019-2026, Benjamin Vaisvil and the zenith contributors
  */
+
 use crate::restore_terminal;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
@@ -191,7 +192,7 @@ impl HistogramMap {
         })
     }
 
-    pub fn get(&self, name: &HistogramKind) -> Option<&Histogram> {
+    pub fn get(&'_ self, name: &HistogramKind) -> Option<&'_ Histogram<'_>> {
         self.map.get(name)
     }
 

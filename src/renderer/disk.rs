@@ -1,7 +1,8 @@
-use super::style::{max_style, ok_style};
-/**
- * Copyright 2019-2022, Benjamin Vaisvil and the zenith contributors
+/*!
+ * Copyright 2019-2026, Benjamin Vaisvil and the zenith contributors
  */
+
+use super::style::{max_style, ok_style};
 use super::{split_left_right_pane, FileSystemDisplay, Render};
 use crate::float_to_byte_string;
 use crate::metrics::histogram::{HistogramKind, View};
@@ -147,8 +148,11 @@ fn disk_activity_histogram(
             "R [{:^10}/s] PEAK [{:^10}/s] {:} ",
             read_up, read_max_bytes, top_reader
         ))];
-        #[cfg(all(not(target_os = "linux"), not(target_os = "macos")))]
-        let spans = vec![Span::raw(format!("R [{:^10}/s] PEAK [{:^10}/s] {:} ", read_up, read_max_bytes, top_reader))];
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        let spans = vec![Span::raw(format!(
+            "R [{:^10}/s] PEAK [{:^10}/s] {:} ",
+            read_up, read_max_bytes, top_reader
+        ))];
 
         #[cfg(target_os = "linux")]
         {

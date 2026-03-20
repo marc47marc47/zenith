@@ -1,6 +1,7 @@
-/**
- * Copyright 2019-2022, Benjamin Vaisvil and the zenith contributors
+/*!
+ * Copyright 2019-2026, Benjamin Vaisvil and the zenith contributors
  */
+
 use super::style::{max_style, ok_style, MAX_COLOR, OK_COLOR};
 use crate::float_to_byte_string;
 use crate::metrics::histogram::{HistogramKind, View};
@@ -42,9 +43,25 @@ fn cpu_title<'a>(app: &'a CPUTimeApp, histogram: &'a [u64]) -> Line<'a> {
             .map(|s| format!("{: >3.0}", s.current_temp))
             .collect::<Vec<String>>()
             .join(",");
-        format!(" TEMP [{t:}°C]")
+
+        let hot_threshold = 70_f64;
+        let cold_threshold = 40_f64;
+        let numbers_txt = format!("{t:}°C");
+        let max_temp = app
+            .sensors
+            .iter()
+            .map(|s| s.current_temp as f64)
+            .fold(f64::MIN, f64::max);
+
+        if max_temp > hot_threshold {
+            Span::styled(numbers_txt, max_style())
+        } else if max_temp < cold_threshold {
+            Span::styled(numbers_txt, Style::default().fg(Color::Cyan))
+        } else {
+            Span::raw(numbers_txt)
+        }
     } else {
-        String::from("")
+        Span::raw(String::from(""))
     };
     Line::from(vec![
         Span::raw("CPU ["),
@@ -57,7 +74,9 @@ fn cpu_title<'a>(app: &'a CPUTimeApp, histogram: &'a [u64]) -> Line<'a> {
             },
         ),
         Span::raw("]"),
-        Span::raw(temp),
+        Span::raw(" TEMP ["),
+        temp,
+        Span::raw("]"),
         Span::raw(" MEAN ["),
         Span::styled(
             format!("{mean: >3.2}%",),
@@ -74,7 +93,7 @@ fn cpu_title<'a>(app: &'a CPUTimeApp, histogram: &'a [u64]) -> Line<'a> {
     ])
 }
 
-fn mem_title(app: &CPUTimeApp) -> Line {
+fn mem_title(app: &'_ CPUTimeApp) -> Line<'_> {
     let mem = percent_of(app.mem_utilization, app.mem_total) as u64;
     let swp = percent_of(app.swap_utilization, app.swap_total) as u64;
 
@@ -91,8 +110,8 @@ fn mem_title(app: &CPUTimeApp) -> Line {
         Span::styled(
             format!(
                 "{} / {} - {:}%",
-                float_to_byte_string!(app.mem_utilization as f64, Unit::KB),
-                float_to_byte_string!(app.mem_total as f64, Unit::KB),
+                float_to_byte_string!(app.mem_utilization as f64, Unit::B),
+                float_to_byte_string!(app.mem_total as f64, Unit::B),
                 mem
             ),
             if mem > 95 { max_style() } else { ok_style() },
@@ -101,8 +120,8 @@ fn mem_title(app: &CPUTimeApp) -> Line {
         Span::styled(
             format!(
                 "{} / {} - {:}%",
-                float_to_byte_string!(app.swap_utilization as f64, Unit::KB),
-                float_to_byte_string!(app.swap_total as f64, Unit::KB),
+                float_to_byte_string!(app.swap_utilization as f64, Unit::B),
+                float_to_byte_string!(app.swap_total as f64, Unit::B),
                 swp,
             ),
             if swp > 20 { max_style() } else { ok_style() },

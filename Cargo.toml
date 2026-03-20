@@ -1,6 +1,6 @@
 [package]
 name = "zenith"
-version = "0.14.2.1"
+version = "0.15.0"
 authors = ["Benjamin Vaisvil"]
 edition = "2018"
 description = "Similar to top or htop but with CPU, Network Usage, and Disk Usage charts."
@@ -22,11 +22,13 @@ crossterm = "0.28.*"
 byte-unit = "~5.1.6"
 num-derive = "0.4.2"
 num-traits = "0.2"
-heim = { version = "0.1.0-rc.1", features = ["host", "net", "disk", "process", "cpu"] }
+heim = { git = "https://github.com/bvaisvil/heim.git", branch = "zenith_changes", features = [
+    "full",
+] }
 futures = "0.3.31"
 gumdrop = { version = "~0.8.1", features = ["default_expr"] }
 chrono = "~0.4.39"
-sysinfo = "0.15.1"
+sysinfo = "0.37"
 dirs-next = "2.0.0"
 serde = { version = "~1.0.217", features = ["derive"] }
 serde_derive = "~1.0.217"
@@ -41,9 +43,11 @@ nvml-wrapper = { version = "0.10.0", optional = true }
 unicode-width = "0.2.0"
 
 [target.'cfg(unix)'.dependencies]
-uzers = "0.12"
+uzers = "0.12.1"
+
 [target.'cfg(target_os = "linux")'.dependencies]
 linux-taskstats = { version = "0.7.0", default-features = false }
+procfs = "0.17"
 
 [patch.crates-io]
 ntapi = { path = "vendor/ntapi" }

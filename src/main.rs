@@ -1,5 +1,5 @@
-/**
- * Copyright 2019-2020, Benjamin Vaisvil and the zenith contributors
+/*!
+ * Copyright 2019-2026, Benjamin Vaisvil and the zenith contributors
  */
 
 #[macro_use]
@@ -27,6 +27,7 @@ use crossterm::{
 };
 use futures::executor::block_on;
 use metrics::histogram::load_zenith_store;
+use ratatui::{backend::CrosstermBackend, Terminal};
 use std::error::Error;
 use std::fs;
 use std::io::stdout;
@@ -159,6 +160,7 @@ fn create_geometry(
     geometry
 }
 
+#[allow(clippy::too_many_arguments)]
 fn start_zenith(
     rate: u64,
     cpu_height: u16,
@@ -249,9 +251,14 @@ fn start_zenith(
             sensor_height,
             graphics_height,
         );
+        let backend = CrosstermBackend::new(stdout());
+        let mut terminal =
+            Terminal::new(backend).expect("Couldn't create new terminal with backend");
+        terminal.hide_cursor().ok();
+
         let mut r = TerminalRenderer::new(rate, &geometry, db, disable_history);
 
-        r.start().await;
+        r.start(terminal).await;
 
         // only drop lock at the end
         drop(lock);

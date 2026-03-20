@@ -1,6 +1,7 @@
-/**
- * Copyright 2019-2022, Benjamin Vaisvil and the zenith contributors
+/*!
+ * Copyright 2019-2026, Benjamin Vaisvil and the zenith contributors
  */
+
 use super::{percent_of, Render};
 use crate::float_to_byte_string;
 use crate::metrics::zprocess::{ProcessStatusExt, ZProcess};
@@ -16,9 +17,10 @@ use ratatui::Frame;
 use std::borrow::Cow;
 use std::time::{Duration, UNIX_EPOCH};
 
+#[allow(clippy::too_many_arguments)]
 pub fn render_process_table(
     app: &CPUTimeApp,
-    process_table: &[i32],
+    process_table: &[u32],
     area: Rect,
     process_table_start: usize,
     f: &mut Frame<'_>,
@@ -51,122 +53,14 @@ pub fn render_process_table(
         return highlighted_process; // not enough space to draw anything
     }
 
-    let rows: Vec<Row> = procs
-        .iter()
-        .enumerate()
-        .skip(process_table_start)
-        .take(display_height)
-        .map(|(i, p)| {
-            let cmd_string = if show_paths {
-                if p.command.len() > 1 {
-                    format!(" - {:}", p.command.join(" "))
-                } else if !p.command.is_empty() {
-                    format!(" - {:}", p.command[0])
-                } else {
-                    String::from("")
-                }
-            } else if p.command.len() > 1 {
-                format!(" {:}", p.command[1..].join(" "))
-            } else {
-                String::from("")
-            };
-            let mut cpu_usage =
-                set_process_row_style(p.pid, app.top_pids.cpu.pid, format!("{:>5.1}", p.cpu_usage));
-            if let Some(top) = &app.cum_cpu_process {
-                if top.pid == p.pid {
-                    cpu_usage = cpu_usage.style(Style::default().fg(Color::Magenta));
-                }
-            };
-
-            let mut row = vec![
-                Cell::from(format!("{: >width$}", p.pid, width = app.max_pid_len)),
-                Cell::from(format!("{: <10}", p.user_name)),
-                Cell::from(format!("{: <3}", p.priority)),
-                Cell::from(format!("{: <3}", p.nice)),
-                cpu_usage,
-                set_process_row_style(
-                    p.pid,
-                    app.top_pids.mem.pid,
-                    format!("{:>5.1}", percent_of(p.memory, app.mem_total)),
-                ),
-                set_process_row_style(
-                    p.pid,
-                    app.top_pids.mem.pid,
-                    format!(
-                        "{:>8}",
-                        float_to_byte_string!(p.memory as f64, Unit::KB).replace('B', "")
-                    ),
-                ),
-                set_process_row_style(
-                    p.pid,
-                    app.top_pids.virt.pid,
-                    format!(
-                        "{:>8}",
-                        float_to_byte_string!(p.virtual_memory as f64, Unit::KB).replace('B', "")
-                    ),
-                ),
-                Cell::from(format!("{:1}", p.status.to_single_char())),
-                set_process_row_style(
-                    p.pid,
-                    app.top_pids.read.pid,
-                    format!(
-                        "{:>8}",
-                        float_to_byte_string!(
-                            p.get_read_bytes_sec(&app.histogram_map.tick),
-                            Unit::B
-                        )
-                        .replace('B', "")
-                    ),
-                ),
-                set_process_row_style(
-                    p.pid,
-                    app.top_pids.write.pid,
-                    format!(
-                        "{:>8}",
-                        float_to_byte_string!(
-                            p.get_write_bytes_sec(&app.histogram_map.tick),
-                            Unit::B
-                        )
-                        .replace('B', "")
-                    ),
-                ),
-            ];
-
-            #[cfg(target_os = "linux")]
-            row.push(set_process_row_style(
-                p.pid,
-                app.top_pids.iowait.pid,
-                format!("{:>5.1}", p.get_io_wait(&app.histogram_map.tick)),
-            ));
-            #[cfg(feature = "nvidia")]
-            row.push(set_process_row_style(
-                p.pid,
-                app.top_pids.gpu.pid,
-                format!("{:>4.0}", p.gpu_usage),
-            ));
-            #[cfg(feature = "nvidia")]
-            row.push(set_process_row_style(
-                p.pid,
-                app.top_pids.frame_buffer.pid,
-                format!("{:>4.0}", p.fb_utilization),
-            ));
-
-            row.push(Cell::from(format!("{:}{:}", p.name, cmd_string)));
-
-            let row = Row::new(row);
-
-            if i == highlighted_row {
-                row.style(
-                    Style::default()
-                        .bg(Color::Gray)
-                        .fg(Color::Black)
-                        .add_modifier(Modifier::BOLD),
-                )
-            } else {
-                row
-            }
-        })
-        .collect();
+    let rows: Vec<Row> = render_rows(
+        app,
+        procs,
+        process_table_start,
+        display_height,
+        show_paths,
+        highlighted_row,
+    );
 
     let mut header = vec![
         format!("{:<width$}", "PID", width = app.max_pid_len + 1),
@@ -249,6 +143,132 @@ pub fn render_process_table(
         )
         .render(f, area);
     highlighted_process
+}
+
+fn render_rows<'a>(
+    app: &CPUTimeApp,
+    procs: Vec<&'a ZProcess>,
+    process_table_start: usize,
+    display_height: usize,
+    show_paths: bool,
+    highlighted_row: usize,
+) -> Vec<Row<'a>> {
+    procs
+        .iter()
+        .enumerate()
+        .skip(process_table_start)
+        .take(display_height)
+        .map(|(i, p)| {
+            let cmd_string = if show_paths {
+                if p.command.len() > 1 {
+                    format!(" - {:}", p.command.join(" "))
+                } else if !p.command.is_empty() {
+                    format!(" - {:}", p.command[0])
+                } else {
+                    String::from("")
+                }
+            } else if p.command.len() > 1 {
+                format!(" {:}", p.command[1..].join(" "))
+            } else {
+                String::from("")
+            };
+            let mut cpu_usage =
+                set_process_row_style(p.pid, app.top_pids.cpu.pid, format!("{:>5.1}", p.cpu_usage));
+            if let Some(top) = &app.cum_cpu_process {
+                if top.pid == p.pid {
+                    cpu_usage = cpu_usage.style(Style::default().fg(Color::Magenta));
+                }
+            };
+
+            let mut row = vec![
+                Cell::from(format!("{: >width$}", p.pid, width = app.max_pid_len)),
+                Cell::from(format!("{: <10}", p.user_name)),
+                Cell::from(format!("{: <3}", p.priority)),
+                Cell::from(format!("{: <3}", p.nice)),
+                cpu_usage,
+                set_process_row_style(
+                    p.pid,
+                    app.top_pids.mem.pid,
+                    format!("{:>5.1}", percent_of(p.memory, app.mem_total)),
+                ),
+                set_process_row_style(
+                    p.pid,
+                    app.top_pids.mem.pid,
+                    format!(
+                        "{:>8}",
+                        float_to_byte_string!(p.memory as f64, Unit::B).replace('B', "")
+                    ),
+                ),
+                set_process_row_style(
+                    p.pid,
+                    app.top_pids.virt.pid,
+                    format!(
+                        "{:>8}",
+                        float_to_byte_string!(p.virtual_memory as f64, Unit::B).replace('B', "")
+                    ),
+                ),
+                Cell::from(format!("{:1}", p.status.to_single_char())),
+                set_process_row_style(
+                    p.pid,
+                    app.top_pids.read.pid,
+                    format!(
+                        "{:>8}",
+                        float_to_byte_string!(
+                            p.get_read_bytes_sec(&app.histogram_map.tick),
+                            Unit::B
+                        )
+                        .replace('B', "")
+                    ),
+                ),
+                set_process_row_style(
+                    p.pid,
+                    app.top_pids.write.pid,
+                    format!(
+                        "{:>8}",
+                        float_to_byte_string!(
+                            p.get_write_bytes_sec(&app.histogram_map.tick),
+                            Unit::B
+                        )
+                        .replace('B', "")
+                    ),
+                ),
+            ];
+
+            #[cfg(target_os = "linux")]
+            row.push(set_process_row_style(
+                p.pid,
+                app.top_pids.iowait.pid,
+                format!("{:>5.1}", p.get_io_wait(&app.histogram_map.tick)),
+            ));
+            #[cfg(feature = "nvidia")]
+            row.push(set_process_row_style(
+                p.pid,
+                app.top_pids.gpu.pid,
+                format!("{:>4.0}", p.gpu_usage),
+            ));
+            #[cfg(feature = "nvidia")]
+            row.push(set_process_row_style(
+                p.pid,
+                app.top_pids.frame_buffer.pid,
+                format!("{:>4.0}", p.fb_utilization),
+            ));
+
+            row.push(Cell::from(format!("{:}{:}", p.name, cmd_string)));
+
+            let row = Row::new(row);
+
+            if i == highlighted_row {
+                row.style(
+                    Style::default()
+                        .bg(Color::Gray)
+                        .fg(Color::Black)
+                        .add_modifier(Modifier::BOLD),
+                )
+            } else {
+                row
+            }
+        })
+        .collect()
 }
 
 pub fn render_process(
@@ -363,7 +383,7 @@ pub fn render_process(
         Line::from(vec![
             Span::raw("Total Memory:          "),
             Span::styled(
-                format!("{:>10}", float_to_byte_string!(p.memory as f64, Unit::KB)),
+                format!("{:>10}", float_to_byte_string!(p.memory as f64, Unit::B)),
                 rhs_style,
             ),
         ]),
@@ -467,13 +487,13 @@ pub fn render_process(
     }
 }
 
-pub fn filter_process_table<'a>(app: &'a CPUTimeApp, filter: &str) -> Cow<'a, [i32]> {
+pub fn filter_process_table<'a>(app: &'a CPUTimeApp, filter: &str) -> Cow<'a, [u32]> {
     if filter.is_empty() {
         return Cow::Borrowed(&app.processes);
     }
 
     let filter_lc = filter.to_lowercase();
-    let results: Vec<i32> = app
+    let results: Vec<u32> = app
         .processes
         .iter()
         .filter(|pid| {
@@ -492,8 +512,8 @@ pub fn filter_process_table<'a>(app: &'a CPUTimeApp, filter: &str) -> Cow<'a, [i
 }
 
 fn set_process_row_style<'a>(
-    current_pid: i32,
-    test_pid: Option<i32>,
+    current_pid: u32,
+    test_pid: Option<u32>,
     row_content: String,
 ) -> Cell<'a> {
     match test_pid {
